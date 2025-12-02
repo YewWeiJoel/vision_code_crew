@@ -1,0 +1,57 @@
+import os
+from typing import Type
+from crewai.tools import BaseTool
+from pydantic import BaseModel, Field
+from openai import AzureOpenAI
+
+class AzureBase64VisionToolInput(BaseModel):
+    """Input schema for the tool."""
+    base64_string: str = Field(..., description="The raw base64 encoded string of the image (without the data:image prefix).")
+    query: str = Field(..., description="The question or instruction for the image.")
+
+class AzureBase64VisionTool(BaseTool):
+    name: str = "Azure Vision Analysis (Base64)"
+    description: str = "Analyzes a base64 encoded image using Azure OpenAI. Handles strict formatting and timeouts."
+    args_schema: Type[BaseModel] = AzureBase64VisionToolInput
+
+    def _run(self, base64_string: str, query: str) -> str:
+        # 1. Initialize Azure Client
+        client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version="2024-02-15-preview", # Update to your specific version
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+        )
+
+        # 2. Format the Data URL manually
+        # Azure requires: data:image/{format};base64,{string}
+        # We assume jpeg for compatibility, but png works too.
+        if "data:image" not in base64_string:
+            formatted_image_url = f"data:image/jpeg;base64,{base64_string}"
+        else:
+            formatted_image_url = base64_string
+
+        # 3. Call API with explicit extended timeout
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o", # Replace with your deployment name
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": query},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": formatted_image_url,
+                                    "detail": "high" # Force high resolution analysis
+                                }
+                            }
+                        ],
+                    }
+                ],
+                max_tokens=4096,
+                timeout=300 # 5-minute timeout to prevent "Long Read" errors
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Azure API Failed: {str(e)}"
