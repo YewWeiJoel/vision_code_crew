@@ -1,17 +1,134 @@
-research_task:
+component_analysis:
   description: >
-    Conduct a thorough research about {topic}
-    Make sure you find any interesting and relevant information given
-    the current year is {current_year}.
+    Analyze the provided UI image at {image_url} and extract all visual components in a hierarchical structure.
+    Break down the interface into distinct regions and their contained components. For each element, identify:
+    - Component name and functional purpose
+    - Visual hierarchy and nesting structure
+    - Bounding box coordinates expressed as percentages relative to the image dimensions (x%, y%, width%, height%)
+      and include the pixel measurements used to compute those percentages.
+    - Textual and number content in the `text` field for each component or text element.
+    - For data-holding components (tables, lists, grids): specify exact dimensions (number of rows/columns)
   expected_output: >
-    A list with 10 bullet points of the most relevant information about {topic}
-  agent: researcher
+    A structured JSON document with all UI components organized hierarchically. Output format (percent fields required):
+    {{
+      "regions": [
+        {{
+          "name": "string - region identifier",
+          "description": "string - content description",
+          "bounding_box": {{
+            "x%": str, "y%": str, "width%": str, "height%": str,
+          }},
+          "components": [
+            {{
+              "name": "string - component identifier",
+              "type": "string - component type (button, input, card, table, list, etc.)",
+              "description": "string - functional description",
+              "bounding_box": {{
+                "x%": str, "y%": str, "width%": str, "height%": str
+              }},
+              "text": str[] # string text content found in the component (if any),
+              "rowCol": {{r:int,c:int}} # for table/lists/grids
+            }}
+          ]
+        }}
+      ]
+    }}
+  agent: ui_engineer
+  output_file: 'C:\Users\user\CascadeProjects\crewAI\vision_code_flow\output\region.json'
 
-reporting_task:
+spatial_analysis:
   description: >
-    Review the context you got and expand each topic into a full section for a report.
-    Make sure the report is detailed and contains any and all relevant information.
+    Refine and enhance the component analysis JSON produced by the component_analysis task by performing spatial
+    and layout analysis on the original UI image at {image_url}. Validate and correct bounding box measurements if needed.
+    For each region and component:
+    - Verify bounding box accuracy against actual visual boundaries
+    - Add "position" field: specify if component uses "absolute" positioning (follows structured grid/layout system)
+      or "fixed" positioning (independent, doesn't follow standard layout flow, e.g., sticky headers, modals)
+    - Add "overflow_handling" field: determine if content overflow requires scroll behavior. Analyze if:
+      * Content extends beyond visible boundaries
+      * Visual scroll indicators (scrollbars) are present in the image
+      * Component should use "scroll", "hidden", or "visible" overflow handling
+    - For any bounding box corrections: add "explain" field detailing the adjustment rationale
+    - Ensure spatial relationships make logical sense (no overlaps unless intentional, proper nesting hierarchy)
   expected_output: >
-    A fully fledged report with the main topics, each with a full section of information.
-    Formatted as markdown without '```'
-  agent: reporting_analyst
+    An enhanced JSON document with spatial annotations. Same structure as component_analysis, but with added fields:
+    - "explain": string - reason for any bounding box adjustments or spatial corrections made
+    - "position": "absolute" | "fixed" - positioning context within layout flow
+    - "overflow_handling": "scroll" | "hidden" | "visible" - overflow behavior based on content and visual cues
+    - dimensions and positions are kept using percent.
+    The output should be a complete, validated spatial map of the 1080p interface ready for design implementation.
+  agent: ui_designer
+  context: ["component_analysis"]
+  output_file: 'C:\Users\user\CascadeProjects\crewAI\vision_code_flow\output\components.json'
+
+# region_analysis:
+#   description: >
+#     Map regions and states the components briefly and all the text within that area for the provided UI image at {image_url}.
+#   expected_output: >
+#     JSON output with regions, their bounding boxes (percent), a brief list of components, and all text found in each region.
+#     {{
+#       "regions": [
+#         {{
+#           "name": "string - region identifier",
+#           "bounding_box": {{"x%": str, "y%": str, "width%": str, "height%": str}},
+#           "components": ["string - brief component name"],
+#           "text": ["string - text found in region"]
+#         }}
+#       ]
+#     }}
+#   agent: ui_designer
+#   output_file: 'C:\Users\user\CascadeProjects\crewAI\vision_code_flow\output\region_map.json'
+
+# component_analysis:
+#   description: >
+#     For each region in the region analysis output, perform detailed spatial analysis and component mapping:
+#     - Validate and, if needed, correct bounding box measurements for each component.
+#     - Specify the positioning of each component: "absolute" (follows structured grid/layout) or "fixed" (independent, e.g., sticky headers, modals).
+#     - Determine overflow handling for each component: "scroll", "hidden", or "visible" based on content and visual cues.
+#     - For any bounding box corrections, add an "explain" field detailing the rationale for the adjustment.
+#     - Ensure spatial relationships make logical sense (no overlaps unless intentional, proper nesting hierarchy).
+#     - Output a fully detailed component map for each region, including all text found in the region.
+#   expected_output: >
+#     JSON output of `components` in that region with field (dimensions, overflow, positioning, rationale, etc.).
+#     {{    "components": [
+#             {{
+#               "name": "string - component identifier",
+#               "type": "string - component type",
+#               "description": "string - functional description",
+#               "bounding_box": {{"x%": str, "y%": str, "width%": str, "height%": str}},
+#               "position": "absolute" | "fixed",
+#               "text": str[],
+#               "rowCol": {{r:int,c:int}} ,
+#               "overflow_handling": "scroll" | "hidden" | "visible",
+#               "explain": "string - rationale for any bounding box or spatial correction",
+#               "z-index": "int - layering order of the component"
+#             }}
+#           ],
+#           "text": ["string - text found in region"]
+#     }}
+#   agent: ui_designer
+#   context: ["region_analysis"]
+
+file_structure_generation:
+  description: >
+    Using the component analysis output, intelligently organize and optimize components into a well-structured React project.
+    Analyze the component map and create LOGICAL, REAL-WORLD component files (not one file per region):
+    - Group related components by functionality and UI purpose (not by region location)
+    - Identify reusable complex components and consolidate them into single, shareable UI objects (e.g., if Button appears in 5 regions, create one Button.jsx)
+    - Create meaningful component files: Header.jsx, Sidebar.jsx, ProductCard.jsx, etc. based on actual UI semantics
+    - Organize into appropriate directories: components/ (reusable), pages/ (page-level), utils/, hooks/, etc.
+    - Follow React best practices: single responsibility, DRY principle, clean code organization
+    - Create necessary entry points and styling files (main.jsx, App.jsx, App.css, component-level CSS modules)
+    Generate a production-ready React project structure that reflects how a real developer would organize this codebase.
+  expected_output: >
+    A JSON array representing the real-world optimized React project file structure. Root starts at src/ and includes logically organized component files and directories.
+    {{
+      [
+        "src/main.jsx",
+        "src/App.jsx",
+        "src/App.css",
+      ]
+    }}
+    No need for explaination. Just output the file structure as a JSON array that is easily parsable. Only list down file path. Folder names not needed.
+  agent: ui_engineer
+  context: ["component_analysis"]
